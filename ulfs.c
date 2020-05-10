@@ -15,11 +15,21 @@ int rmdir(char *pathname);
 int ls(char *pathname);
 int cd(char *pathname);
 int pwd(char *pathname);
+int creat(char *pathname);
+int rm(char *pathname);
+int reload(char *pathname);
+int save(char *pathname);
+int menu(char *pathname);
+int quit(char *pathname);
+
+
+
 void _dbname(char *pathname);
 int _get_cmd_index(char *command);
 int tokenize(char *pathname);
-void _print_full_path(struct node *nd);
+void _print_full_path(struct node *nd, FILE *fp);
 struct node *_get_node_by_pathname(char *pathname);
+void _save_by_node(struct node *tar, FILE *fp);
 
 
 
@@ -30,9 +40,9 @@ char command[16], pathname[64];
 char dname[64], bname[64];
 char *cmd[] = {"mkdir", "rmdir", "ls", "cd", "pwd", "creat",
 			   "rm", "reload", "save", "menu", "quit", NULL};
-// int (*handlers[])(char*) = {mkdir, rmdir, ls, cd, pwd, creat,
-// 			   				rm, reload, save, menu, quit, NULL};
-int (*handlers[])(char*) = {mkdir, rmdir, ls, cd, pwd, NULL};
+int (*handlers[])(char*) = {mkdir, rmdir, ls, cd, pwd, creat,
+			   				rm, reload, save, menu, quit, NULL};
+// int (*handlers[])(char*) = {mkdir, rmdir, ls, cd, pwd, NULL};
 
 
 
@@ -49,9 +59,7 @@ int main(int ac, char const *av[])
 	cwd = root;
 
 	while (1) {
-		printf("ulfs:");
-		_print_full_path(cwd);
-		printf("$ "); // Prompt
+		printf("ulfs:"); _print_full_path(cwd, stdout);	printf("$ "); // Prompt
 		fgets(line, 128, stdin); // Get input from stdin
 		line[strlen(line)-1] = '\0';
 		hasPath = sscanf(line, "%s %s", command, pathname); // Parse input as cmd and path
@@ -70,9 +78,73 @@ int main(int ac, char const *av[])
 	return 0;
 }
 
+int creat(char *pathname)
+{
+	return 0;
+}
+int rm(char *pathname)
+{
+	return 0;
+}
+
+int reload(char *pathname)
+{
+	FILE *fp;
+	char buf[256];
+
+ 	fp = fopen("fsimg", "r");
+	fgets(buf, 256, fp); // Consume first line (i.e. D /).
+	while (fgets(buf, 256, fp)) {
+		if (*buf == 'D'){
+			buf[strlen(buf)-1] = 0;
+			mkdir(buf+2);
+		}
+	}
+	return 0;
+}
+
+int save(char *pathname)
+{
+	FILE *fp = fopen("fsimg", "w+");
+
+	/* Preorder traverse tree started from root. */
+	_save_by_node(root, fp);
+	fclose(fp);
+}
+
+void _save_by_node(struct node *tar, FILE *fp)
+{
+	/* Boundary condition */
+	if (!tar)
+		return;
+
+	/* Preorder traverse tree */
+	/* D node */
+	fprintf(fp, "%c ", tar->_type);
+	_print_full_path(tar, fp);
+	fprintf(fp, "\n");
+	/* L node */
+	_save_by_node(tar->_chld, fp);
+	/* R node */
+	if (tar != root) // root->_sib == root, so we should avoid infinite recursion.
+		_save_by_node(tar->_sib, fp);
+
+	return;
+}
+
+int menu(char *pathname)
+{
+	return 0;
+}
+int quit(char *pathname)
+{
+	return 0;
+}
+
+
 int pwd(char *pathname)
 {
-	_print_full_path(cwd);
+	_print_full_path(cwd, stdout);
 	printf("\n");
 	return 0;
 }
@@ -111,7 +183,7 @@ int rmdir(char *pathname)
 		tmp = tar->_prt->_chld;
 		while (tmp->_sib != tar)
 			tmp = tmp->_sib;
-		/* Now, tmp is the last one of tar */
+		/* Now, tmp is the precedence of tar */
 		tmp->_sib = tar->_sib;
 	}
 
@@ -123,21 +195,28 @@ int rmdir(char *pathname)
 
 int mkdir(char *pathname)
 {
-	struct node *new, *latestSib;
+	struct node *new, *latestSib, *tmp;
+
+	/* tmp is new's parent */
+	_dbname(pathname);
+	if ((tmp = _get_node_by_pathname(dname)) == NULL) {
+		printf("Error: %s doesn't exit\n", dname);
+		return -1;
+	}
 
 	new = calloc(sizeof(struct node), 1);
-	strcpy(new->_name, pathname);
+	strcpy(new->_name, bname);
 	new->_type = 'D';
-	new->_prt = cwd;
+	new->_prt = tmp;
 
-	if (cwd->_chld) { // new is not the first child.
-		latestSib = cwd->_chld;
+	if (tmp->_chld) { // new is not the first child.
+		latestSib = tmp->_chld;
 		while (latestSib->_sib)
 			latestSib = latestSib->_sib;
 		latestSib->_sib = new;
 	}
 	else // new is the first child
-		cwd->_chld = new;
+		tmp->_chld = new;
 	
 	return 0;
 }
@@ -161,7 +240,9 @@ int _get_cmd_index(char *command)
 }
 
 void _dbname(char *pathname)
-/* Side effect: global's dname and bname will be filled in. */
+/* Side effect: global's dname and bname will be filled in.
+ * Warning: You should clean (e.g. remove \n) pathname first
+ */
 {
 	char tmp[128];
 
@@ -171,15 +252,15 @@ void _dbname(char *pathname)
 	strcpy(bname, basename(tmp));
 }
 
-void _print_full_path(struct node *nd)
+void _print_full_path(struct node *nd, FILE *fp)
 {
 	if (nd != nd->_prt) // nd is not root.
-		_print_full_path(nd->_prt);
+		_print_full_path(nd->_prt, fp);
 	else {
-		printf("/");
+		fprintf(fp, "/");
 		return;
 	}
-	printf("%s/", nd->_name);	
+	fprintf(fp, "%s/", nd->_name);	
 	return;
 }
 
@@ -190,6 +271,8 @@ struct node *_get_node_by_pathname(char *pathname)
 
 	if (!strcmp("..", pathname)) {
 		tmp = cwd->_prt;
+	} else if (!strcmp(".", pathname)) {
+		tmp = cwd;
 	} else { 
 		strcpy(tmp_str, pathname); // strtok() will modify original string.
 		tmp = *pathname == '/' ? root : cwd; // Path is absolute or relative?
@@ -198,6 +281,8 @@ struct node *_get_node_by_pathname(char *pathname)
 			tmp = tmp->_chld;		
 			while (tmp != NULL && strcmp(tmp->_name, s))
 				tmp = tmp->_sib;
+			if (!tmp)
+				break;
 			s = strtok(0, "/"); // call strtok() until it returns NULL
 		}
 	}
