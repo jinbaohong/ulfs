@@ -4,6 +4,7 @@ gcc ulfs.c -o ulfs
 ./ulfs
 ```
 ## Example
+```bash
 ulfs:/$ mkdir a
 ulfs:/$ cd a
 ulfs:/a/$ mkdir b
@@ -14,5 +15,5 @@ ulfs:/a/b/$ mkdir c2
 ulfs:/a/b/$ cd /
 ulfs:/$ ls a/b
 c  c1  c2  
-ulfs:/$
-
+ulfs:/$ save
+```
