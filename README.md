@@ -7,15 +7,21 @@ gcc -g show_ext2.c -o show_ext2
 ```
 ### Example
 ```bash
-$ ./show_ext2 mydisk /f1/k2/hello
-15
--rw-r--r--
-size = 19
-i_ctime : Sun May 17 15:10:46 2020
-user = jinbao
-group = jinbao
-$ ls -li mnt/f1/k2/hello 
-15 -rw-r--r-- 1 jinbao jinbao 19  5月 16 17:52 mnt/f1/k2/hello
+$ ./show_ext2 mydisk /f1/k2/
+13 drwxr-xr-x 3 jinbao jinbao 1024  May 17 20:00 .
+12 drwxr-xr-x 3 jinbao jinbao 1024  May 16 17:52 ..
+17 -rw-rw-r-- 1 jinbao jinbao    0  May 17 19:59 foo
+15 -rw-r--r-- 1 jinbao jinbao   19  May 16 17:52 hello
+19 -rw-rw-r-- 1 jinbao jinbao    0  May 17 19:59 bar
+20 drwxrwxr-x 2 jinbao jinbao 1024  May 17 20:00 f4
+$ ls -lia mnt/f1/k2
+13 drwxr-xr-x 3 jinbao jinbao 1024  5月 17 20:00 .
+12 drwxr-xr-x 3 jinbao jinbao 1024  5月 16 17:52 ..
+19 -rw-rw-r-- 1 jinbao jinbao    0  5月 17 19:59 bar
+20 drwxrwxr-x 2 jinbao jinbao 1024  5月 17 20:00 f4
+17 -rw-rw-r-- 1 jinbao jinbao    0  5月 17 19:59 foo
+15 -rw-r--r-- 1 jinbao jinbao   19  5月 16 17:52 hello
+
 ```
 ## FileSystem operation simulator
 ```bash

@@ -83,50 +83,8 @@ int search(int fd, INODE *inode, char *name)
 	return -1; // Doesn't find such name in inode inode
 }
 
-int show(int fd, char *path)
+int inode_print(INODE *inode, int inode_no, char *name)
 {
-	char *s, tmp_str[FILE_NAME_SIZ];
-	int firstdata, inodesize, blksize, inode_no;
-
-	SUPER *sp = calloc(sizeof(SUPER), 1);
-	GD *gd = calloc(sizeof(GD), 1);
-	INODE *root = calloc(sizeof(INODE), 1);
-	INODE *inode = calloc(sizeof(INODE), 1);
-
-	// Get sp
-	get_sp(fd, sp);
-	firstdata = sp->s_first_data_block;
-	inodesize = sp->s_inode_size;
-	blksize = 1024*(1<<sp->s_log_block_size);
-	
-// printf("magic debug line\n");
-
-	// Get group descriptor	
-	get_gpd(fd, sp, gd);
-
-	// Get root inode in inode-table
-	get_inode(fd, gd, 2, root);
-
-	inode = root;
-	strcpy(tmp_str, path); // strtok() will modify original string.
-	// tmp = *pathname == '/' ? root : cwd; // Path is absolute or relative?
-	s = strtok(tmp_str, "/"); // first call to strtok()
-	while(s){ // s is token
-		if ((inode_no = search(fd, inode, s)) == -1)
-			printf("Error: can't find %s\n", s), exit(1);
-		// printf("Find %s is at inode %d\n", s, inode_no);
-
-		// Update inode and s
-		get_inode(fd, gd, inode_no, inode);
-		if (inode->i_mode >> 12 != 4)
-			break; // if inode is not dir, then break
-		s = strtok(0, "/"); // call strtok() until it returns NULL
-	}
-	if (inode->i_mode >> 12 == 4)
-		printf("Error: end with DIR, not FILE\n"), exit(1);
-
-	
-	// Only when inode is FILE will get here.
 	#define EXT2_S_IFSOCK	0xC000
 	#define EXT2_S_IFLNK	0xA000
 	#define EXT2_S_IFREG	0x8000
@@ -159,15 +117,88 @@ int show(int fd, char *path)
 	if (inode->i_mode & 0x0080) mode_string[2] = 'w';
 	if (inode->i_mode & 0x0100) mode_string[1] = 'r';
 
-	printf("%d\n", inode_no);
-	printf("%s\n", mode_string);
-	printf("size = %d\n", inode->i_size);
-	time_t i_ctime = inode->i_ctime;
-	printf("i_ctime : %s", ctime(&i_ctime));
-	printf("user = %s\n", getpwuid(inode->i_uid)->pw_name);
-	printf("group = %s\n", getgrgid(inode->i_gid)->gr_name);
+	printf("%d %s %d ", inode_no, mode_string, inode->i_links_count);
+	printf("%s ", getpwuid(inode->i_uid)->pw_name);
+	printf("%s ", getgrgid(inode->i_gid)->gr_name);
+	printf("%4d ", inode->i_size);
+
+	char time_string[1000];
+	time_t i_mtime = inode->i_mtime;
+	struct tm *ppp = localtime(&i_mtime);
+	strftime(time_string, 1000, " %b %d %H:%M", ppp);
+	printf("%s %s\n", time_string, name);
 
 }
+
+
+int dir_print(int fd, GD *gd, INODE *inode_dir)
+{ // Search dir_ent's inode by name in inode
+	char buf[BLKSIZE], temp[256], *cp;
+	DIR *dp;
+	INODE *inode = calloc(sizeof(INODE), 1);
+
+	for (int i = 0; i < 12; i++)
+	{ // Assume user only use direct block
+		get_block(fd, inode_dir->i_block[i], buf);
+
+		dp = (DIR*)buf;
+		cp = buf;
+		while(cp < buf + BLKSIZE && dp->rec_len){
+			strncpy(temp, dp->name, dp->name_len);
+			temp[dp->name_len] = '\0';
+			get_inode(fd, gd, dp->inode, inode);
+			inode_print(inode, dp->inode, temp);
+			cp += dp->rec_len;
+			dp = (DIR *)cp;	
+		}
+	}
+}
+
+int show(int fd, char *path)
+{
+	char *s, tmp_str[FILE_NAME_SIZ];
+	int firstdata, inodesize, blksize, inode_no;
+	SUPER *sp = calloc(sizeof(SUPER), 1);
+	GD *gd = calloc(sizeof(GD), 1);
+	INODE *root = calloc(sizeof(INODE), 1);
+	INODE *inode = calloc(sizeof(INODE), 1);
+
+	// Get sp
+	get_sp(fd, sp);
+	firstdata = sp->s_first_data_block;
+	inodesize = sp->s_inode_size;
+	blksize = 1024*(1<<sp->s_log_block_size);
+	
+	// Get group descriptor	
+	get_gpd(fd, sp, gd);
+
+	// Get root inode in inode-table
+	get_inode(fd, gd, 2, root);
+
+	inode = root;
+	strcpy(tmp_str, path); // strtok() will modify original string.
+	// tmp = *pathname == '/' ? root : cwd; // Path is absolute or relative?
+	s = strtok(tmp_str, "/"); // first call to strtok()
+	while(s){ // s is token
+		if ((inode_no = search(fd, inode, s)) == -1)
+			printf("Error: can't find %s\n", s), exit(1);
+		// printf("Find %s is at inode %d\n", s, inode_no);
+
+		// Update inode and s
+		get_inode(fd, gd, inode_no, inode);
+		if (inode->i_mode >> 12 != 4)
+			break; // if inode is not dir, then break
+		s = strtok(0, "/"); // call strtok() until it returns NULL
+	}
+	if (inode->i_mode >> 12 == 4) // when inode is DIR
+		dir_print(fd, gd, inode);
+	else // when inode is FILE
+		inode_print(inode, inode_no, path);
+	return 0;
+}
+
+
+
 
 int main(int ac, char *av[])
 {
@@ -181,6 +212,8 @@ int main(int ac, char *av[])
 
 	if (check_ext2(fd) == -1)
 		printf("Error: device %s is not EXT2\n", av[1]), exit(1);
+
 	show(fd, av[2]);
+
 	return 0;
 }
