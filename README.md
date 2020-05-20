@@ -1,6 +1,38 @@
 # ulfs
 
-## EXT2 interface
+## EXT2 fs Implement
+```bash
+gcc FS1.1.c -o FS1.1
+./FS1.1 
+```
+### Example
+```bash
+$ ./FS1.1
+bmap=8 imap=9 iblock=10
+mount : mydisk mounted on / 
+P0 running: input command : pwd
+Running pwd
+/
+********MINODE**[dev ino refCount]*******
+[3 2 4]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->
+running->cwd->ino = 2
+*****************************************
+P0 running: input command : cd f1
+********MINODE**[dev ino refCount]*******
+[3 2 3]->[3 12 1]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->
+running->cwd->ino = 12
+*****************************************
+P0 running: input command : pwd
+Running pwd
+/f1/
+********MINODE**[dev ino refCount]*******
+[3 2 4]->[3 12 1]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->[0 0 0]->
+running->cwd->ino = 12
+*****************************************
+
+```
+
+## EXT2 traverse
 ```bash
 gcc -g show_ext2.c -o show_ext2
 ./show_ext2 mydisk /f1/k2/hello
