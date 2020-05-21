@@ -2,20 +2,7 @@
 
 
 
-int get_block(int dev, int blk, char *buf)
-{
-	lseek(dev, blk*BLKSIZE, SEEK_SET);
-	int n = read(dev, buf, BLKSIZE);
-	if (n<0) printf("get_block [%d %d] error\n", dev, blk);
-}
 
-int put_block(int dev, int blk, char *buf)
-{
-	lseek(dev, blk*BLKSIZE, SEEK_SET);
-	int n = write(dev, buf, BLKSIZE);
-	if (n != BLKSIZE)
-		printf("put_block [%d %d] error\n", dev, blk);
-}
 
 int get_inode_from_dev(int dev, int ino, INODE *ip)
 { // ip is inode table base address
@@ -194,3 +181,17 @@ int get_myname(MINODE *parent_minode, int my_ino, char *my_name)
 	}
 	return -1; // Doesn't find such ino in parent_minode
 }
+
+void _dbname(char *pathname, char *dname, char *bname)
+/* Side effect: global's dname and bname will be filled in.
+ * Warning: You should clean (e.g. remove \n) pathname first
+ */
+{
+	char tmp[128];
+
+	strcpy(tmp, pathname);
+	strcpy(dname, dirname(tmp));
+	strcpy(tmp, pathname);
+	strcpy(bname, basename(tmp));
+}
+

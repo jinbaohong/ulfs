@@ -92,21 +92,15 @@ int main(int argc, char *argv[ ])
 			jchdir(pathname);
 		if (!strcmp(cmd, "pwd"))
 			jpwd(running->cwd);
+		if (!strcmp(cmd, "mkdir"))
+			jmkdir(pathname);
+		if (!strcmp(cmd, "creat"))
+			jcreat(pathname);
+		if (!strcmp(cmd, "rmdir"))
+			jrmdir(pathname);
 		if (!strcmp(cmd, "quit"))
 			jquit();
 		minodes_print();
 	}
 }
 
-int jquit() // write all modified minodes to disk
-{
-	int i;
-	for (i=0; i<NMINODE; i++){
-		MINODE *mip = &minode[i];
-		if (mip->refCount && mip->dirty){
-			mip->refCount = 0;
-			put_inode(mip);
-		}
-	}
-	exit(0);
-}

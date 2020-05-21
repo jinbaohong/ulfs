@@ -2,6 +2,8 @@
 
 ## EXT2 fs Implement
 ```bash
+dd if=/dev/zero of=mydisk bs=1024 count=1440
+mke2fs mydisk 1440
 gcc FS1.1.c -o FS1.1
 ./FS1.1 
 ```
