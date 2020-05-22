@@ -72,7 +72,7 @@ int mount_root(char *rootdev)
 
 int main(int argc, char *argv[ ])
 {
-	char line[128], cmd[16], pathname[64];
+	char line[128], cmd[16], pathname[64], pathname2[64];
 	if (argc > 1)
 		rootdev = argv[1];
 	fs_init();
@@ -85,7 +85,7 @@ int main(int argc, char *argv[ ])
 		line[strlen(line)-1] = 0;
 		if (line[0]==0)
 			continue;
-		sscanf(line, "%s %s", cmd, pathname);
+		sscanf(line, "%s %s %s", cmd, pathname, pathname2);
 		if (!strcmp(cmd, "ls"))
 			jls(pathname);
 		if (!strcmp(cmd, "cd"))
@@ -98,6 +98,10 @@ int main(int argc, char *argv[ ])
 			jcreat(pathname);
 		if (!strcmp(cmd, "rmdir"))
 			jrmdir(pathname);
+		if (!strcmp(cmd, "link"))
+			jlink(pathname, pathname2);
+		if (!strcmp(cmd, "unlink"))
+			junlink(pathname);
 		if (!strcmp(cmd, "quit"))
 			jquit();
 		minodes_print();

@@ -357,6 +357,9 @@ int compact_i_block(MINODE *mip)
 }
 
 int rm_child(MINODE *mip, char *name)
+/* Remove dir_ent( by name) in mip's dataBlock
+ * this will set mip's dirty bit to 1 when it modify successfully.
+ */
 {
 	char buf[BLKSIZE], temp[256], *cp, *cpt;
 	DIR *dp, *dp2, *dpt, *dpt2; //dp2 point to last dir_ent
@@ -448,3 +451,88 @@ int jrmdir(char *pathname)
 	put_inode(mip_b);
 }
 
+int jlink(char *old_file, char *new_file)
+{
+	MINODE *mip_d, *mip_old;
+	int ino_d, ino_old;
+	char dname[256], bname[256];
+
+	_dbname(new_file, dname, bname);
+
+	// Make sure old_file is not dir
+	if ((ino_old = getino(dev, old_file)) == -1){
+		printf("Error: %s doesn't exist\n", old_file);
+		return -1;
+	}
+	if (!(mip_old = get_inode_from_mem(dev, ino_old)))
+		return -1;
+	if ((mip_old->inode.i_mode & 0xF000) == 0x4000){
+		printf("Error: '%s' is directory\n", old_file);
+		return -1;
+	}
+
+	/* Set dir's data block */
+	if ((ino_d = getino(dev, dname)) == -1){
+		printf("Error: %s doesn't exist\n", dname);
+		return -1;
+	}
+	if (!(mip_d = get_inode_from_mem(dev, ino_d)))
+		return -1;
+	enter_name(dev, mip_d, ino_old, bname);
+	put_inode(mip_d);
+
+	// Old_file's inode links++
+	mip_old->inode.i_links_count += 1;
+	mip_old->dirty = 1;
+	put_inode(mip_old);
+
+	return 0;
+}
+
+int junlink(char *pathname)
+{
+	MINODE *mip_d, *mip_b;
+	int ino_d, ino_b;
+	char dname[256], bname[256];
+
+	_dbname(pathname, dname, bname);
+
+	// Make sure pathname is not dir
+	if ((ino_b = getino(dev, pathname)) == -1){
+		printf("Error: %s doesn't exist\n", pathname);
+		return -1;
+	}
+	if (!(mip_b = get_inode_from_mem(dev, ino_b)))
+		return -1;
+	if ((mip_b->inode.i_mode & 0xF000) == 0x4000){
+		printf("Error: '%s' is directory\n", pathname);
+		return -1;
+	}
+
+	// Remove dir_ent from parent's dataBlock
+	if ((ino_d = getino(dev, dname)) == -1){
+		printf("Error: %s doesn't exist\n", dname);
+		return -1;
+	}
+	if (!(mip_d = get_inode_from_mem(dev, ino_d)))
+		return -1;
+	rm_child(mip_d, bname);
+	put_inode(mip_d);
+
+	// i_links_count--
+	/* Even if it is truly removed, still need to put_inode(),
+	 * cause put_inode() is release for memory, not disk.
+	 */
+	if ( --mip_b->inode.i_links_count > 0){ // Still have somefile referece to it
+		mip_b->dirty = 1;
+	} else { // No one reference to it
+		// Dealloc all dataBlocks
+		for (int i = 0; i < 12; i++)
+			if (mip_b->inode.i_block[i])
+				bdalloc(mip_b->dev, mip_b->inode.i_block[i]);
+		// Dealloc inode struct
+		idalloc(mip_b->dev, mip_b->ino);
+	}
+	put_inode(mip_b);
+
+}
