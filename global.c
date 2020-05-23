@@ -43,6 +43,84 @@ int put_block(int dev, int blk, char *buf)
 		printf("put_block [%d %d] error\n", dev, blk);
 }
 
+
+MINODE *mialloc() // allocate a FREE minode for use
+{
+	MINODE *mp;
+
+	for (int i=0; i<NMINODE; i++){
+		mp = &minode[i];
+		if (mp->refCount == 0){
+			mp->refCount = 1;
+			return mp;
+		}
+	}
+	printf("FS panic: out of minodes\n");
+	return NULL;
+}
+
+int midalloc(MINODE *mip) // release a used minode
+{
+	mip->refCount = 0;
+}
+
+int get_inode_from_dev(int dev, int ino, INODE *ip)
+{ // ip is inode table base address
+	lseek(dev, mtable[dev].iblock*BLKSIZE + (ino-1)*sizeof(INODE), SEEK_SET);
+	read(dev, ip, sizeof(INODE));
+	return 0;
+}
+
+MINODE *get_inode_from_mem(int dev, int ino)
+{
+	MINODE *mip;
+	MTABLE *mp;
+	INODE *ip;
+	int i, block, offset;
+	char buf[BLKSIZE];
+	// search in-memory minodes first
+	for (i=0; i<NMINODE; i++){
+		MINODE *mip = &minode[i];
+		if (mip->refCount && (mip->dev==dev) && (mip->ino==ino)){
+			mip->refCount++;
+			return mip;
+		}
+	}
+	// needed INODE=(dev,ino) not in
+	if ((mip = mialloc()) == NULL)  // allocate a FREE minode
+		return NULL;
+	mip->dev = dev; mip->ino = ino; // assign to (dev, ino)
+	get_inode_from_dev(dev, ino, &mip->inode);
+	// initialize minode
+	mip->refCount = 1; // set to 1 again (first time is in mialloc())
+	mip->mounted = 0;
+	mip->dirty = 0;
+	mip->mntPtr = 0;
+	return mip;
+}
+
+int put_inode(MINODE *mip)
+{
+	INODE *ip;
+	int i, block, offset;
+	char buf[BLKSIZE];
+
+	if (mip == NULL) return 0;
+	if (--mip->refCount > 0) return 0;
+	if (mip->dirty == 0) return 0;
+	// write INODE back to disk
+	block = (mip->ino - 1) / 8 + mtable[mip->dev].iblock;
+	offset = (mip->ino - 1) % 8;
+	// get block containing this inode
+	get_block(mip->dev, block, buf);
+	ip = (INODE *)buf + offset;
+	*ip = mip->inode;
+	put_block(mip->dev, block, buf);
+	midalloc(mip);
+	return 1;
+}
+
+
 int decFreeInodes(int dev, int delta)
 {
 	char buf[BLKSIZE];
@@ -91,24 +169,28 @@ int decFreeBlocks(int dev, int delta)
 	return 0;
 }
 
-MINODE *mialloc() // allocate a FREE minode for use
+OFT *oalloc(int mode, MINODE *mip)
 {
-	MINODE *mp;
+	OFT *ofp;
 
-	for (int i=0; i<NMINODE; i++){
-		mp = &minode[i];
-		if (mp->refCount == 0){
-			mp->refCount = 1;
-			return mp;
+	for (int i=0; i<NOFT; i++){
+		ofp = &oft[i];
+		if (ofp->refCount == 0){
+			ofp->mode = mode; // RD=0|WR=1|RW=2|AP=3
+			ofp->refCount = 1;
+			ofp->minodePtr = mip;
+			ofp->offset = mode < 3 ? 0 : mip->inode.i_size;
+			return ofp;
 		}
 	}
-	printf("FS panic: out of minodes\n");
-	return 0;
+	printf("FS panic: out of openFileTables\n");
+	return NULL;
 }
 
-int midalloc(MINODE *mip) // release a used minode
+int odalloc(OFT *ofp)
 {
-	mip->refCount = 0;
+	ofp->refCount = 0; // this is not necessary
+	put_inode(ofp->minodePtr);
 }
 
 int ialloc(int dev) // alloc inode from device
@@ -164,7 +246,6 @@ int bdalloc(int dev, int bno)
 	put_block(dev, mtable[dev].bmap, buf);
 	decFreeBlocks(dev, 1); // increment
 }
-
 
 int minodes_print()
 {

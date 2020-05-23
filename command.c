@@ -536,3 +536,163 @@ int junlink(char *pathname)
 	put_inode(mip_b);
 
 }
+
+int jopen(char *pathname, int flag)
+{
+	MINODE *mip;
+	OFT *ofp;
+	int ino;
+
+	// Make sure pathname is not dir
+	if ((ino = getino(dev, pathname)) == -1){
+		printf("Error: %s doesn't exist\n", pathname);
+		return -1;
+	}
+	if (!(mip = get_inode_from_mem(dev, ino)))
+		return -1;
+	if ((mip->inode.i_mode & 0xF000) == 0x4000){
+		printf("Error: '%s' is directory\n", pathname);
+		return -1;
+	}
+	// Get a open file table entry and set process's fd[]
+	ofp = oalloc(flag, mip); // flag = RD|WR|RW|AP
+	for (int i = 0; i < NFD; i++)
+		if (!running->fd[i]){
+			running->fd[i] = ofp;
+			printf("Getted fd = %d\n", i);
+			return i; // return index as file descriptor
+		}
+	return -1;	
+}
+
+int jclose(int fd)
+{
+	OFT *ofp;
+
+	if ( !(ofp = running->fd[fd])) { // fd is not a using fd
+		printf("Error: fd:'%d' is not using\n", fd);
+		return -1;
+	}
+	if ( !--ofp->refCount)
+		odalloc(ofp);
+	// clear fd
+	running->fd[fd] = NULL;
+	return 0;
+}
+
+int jread(int fd, char *buf, int n)
+{
+	MINODE *mip;
+	OFT *ofp;
+	int lbk, pbk, remain, count, avail, actual, res;
+	char kbuf[BLKSIZE], *start_k, *start_u;
+
+	if ( !(ofp = running->fd[fd])) { // fd is not a using fd
+		printf("Error: fd:'%d' is not using\n", fd);
+		return -1;
+	}
+
+	mip = ofp->minodePtr;
+	start_u = buf; // user buf's cursor
+	avail = mip->inode.i_size - ofp->offset;
+	res = actual = avail > n ? n : avail; // actual is the bytes caller actually can read
+
+	while (actual){ // while still have requested bytes to read
+		lbk = ofp->offset / BLKSIZE; // logical block number, assume lbk < 12
+		pbk = mip->inode.i_block[lbk];
+		get_block(dev, pbk, kbuf); // read a block of data from device to kbuf[]
+		start_k = kbuf + (ofp->offset % BLKSIZE); // kbuf's cursor
+		remain = kbuf + BLKSIZE - start_k; // Byte number remaining in kbuf
+		if (actual >= remain){ // Remaining bytes more than kbuf[]'s remain
+			memcpy(start_u, start_k, remain);
+			start_u += remain;
+			ofp->offset += remain; // update for open file table's offset
+			actual -= remain;
+		} else { // kbuf's remain is enough for remaining requested bytes
+			memcpy(start_u, start_k, actual);
+			ofp->offset += actual; // update for open file table's offset
+			break;
+		}
+	}
+	return res;
+}
+
+// int fill_blk_hole(MINODE *mip, int lbk)
+// { // Fill all hole block before(contain) lbk.
+// /* 1. Zero all unallocated block from i_block[0] ~ i_block[lbk]
+//  *    but doens't zero realLast blk's remain part.
+//  * 2. inode.i_size will be updated (including the real last block's remain)
+//  *    but without lbk block's size.
+//  * 3. Return pbk of lbk.
+//  * ____________|____
+//  * |cont|remain| 000000 ...
+//  * ------------|----
+//  * realLast blk
+//  */
+// 	char tbuf[BLKSIZE];
+// 	int pbk, first;
+
+// 	first = 1;
+// 	for (int i = 0; i < lbk+1; i++)
+// 		if (mip->inode.i_block[i] == 0){
+// 			if (first){
+// 				first = 0;
+// 				if (i) // if i ==0, all blks of this inode is not allocated, so won't have remain size. 
+// 					mip->inode.i_size += (BLKSIZE - (mip->inode.i_size % BLKSIZE));
+// 			}
+// 			pbk = mip->inode.i_block[i] = balloc(dev);
+// 			get_block(dev, mip->inode.i_block[i], tbuf);
+// 			memset(tbuf, 0, BLKSIZE); // Zero whole block
+// 			put_block(dev, mip->inode.i_block[i], tbuf);
+// 			mip->inode.i_size += BLKSIZE;
+// 		}
+// 	mip->inode.i_size -= BLKSIZE;
+// 	return pbk;
+// }
+
+int jwrite(int fd, char *buf, int n)
+{
+	MINODE *mip;
+	OFT *ofp;
+	int lbk, pbk, remain, count;
+	char kbuf[BLKSIZE], tbuf[BLKSIZE], *start_k, *start_u;
+
+	if ( !(ofp = running->fd[fd])) { // fd is not a using fd
+		printf("Error: fd:'%d' is not using\n", fd);
+		return -1;
+	}
+
+	mip = ofp->minodePtr;
+	count = 0;
+	start_u = buf; // user buf's cursor
+	while (n){ // while still have requested bytes to read
+		lbk = ofp->offset / BLKSIZE; // logical block number, assume lbk < 12
+		if ( (pbk = mip->inode.i_block[lbk]) == 0){ // if pbk hasn't allocate
+			pbk = mip->inode.i_block[lbk] = balloc(dev);
+			get_block(dev, mip->inode.i_block[lbk], tbuf);
+			memset(tbuf, 0, BLKSIZE); // Zero whole block
+			put_block(dev, mip->inode.i_block[lbk], tbuf);
+		}
+		get_block(dev, pbk, kbuf); // read a block of data from device to kbuf[]
+		start_k = kbuf + (ofp->offset % BLKSIZE); // kbuf's cursor
+		remain = kbuf + BLKSIZE - start_k; // Byte number remaining in kbuf
+		if (n >= remain){ // Remaining bytes more than kbuf[]'s remain
+			memcpy(start_k, start_u, remain);
+			// Update
+			start_u += remain;
+			count += remain; // count total bytes read
+			ofp->offset += remain; // update for open file table's offset
+			n -= remain;
+		} else { // kbuf's remain is enough for remaining requested bytes
+			memcpy(start_k, start_u, n);
+			count += n;
+			ofp->offset += n; // update for open file table's offset
+			n = 0;
+		}
+		put_block(dev, pbk, kbuf);
+	}
+	if (ofp->offset > mip->inode.i_size)
+		mip->inode.i_size = ofp->offset;
+	mip->dirty = 1;
+	return count;
+}

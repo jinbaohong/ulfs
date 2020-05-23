@@ -72,7 +72,8 @@ int mount_root(char *rootdev)
 
 int main(int argc, char *argv[ ])
 {
-	char line[128], cmd[16], pathname[64], pathname2[64];
+	char line[128], cmd[16], pathname[64], pathname2[64], arg1[64],
+		 buf[BLKSIZE];
 	if (argc > 1)
 		rootdev = argv[1];
 	fs_init();
@@ -85,7 +86,7 @@ int main(int argc, char *argv[ ])
 		line[strlen(line)-1] = 0;
 		if (line[0]==0)
 			continue;
-		sscanf(line, "%s %s %s", cmd, pathname, pathname2);
+		sscanf(line, "%s %s %s %s", cmd, pathname, pathname2, arg1);
 		if (!strcmp(cmd, "ls"))
 			jls(pathname);
 		if (!strcmp(cmd, "cd"))
@@ -102,6 +103,17 @@ int main(int argc, char *argv[ ])
 			jlink(pathname, pathname2);
 		if (!strcmp(cmd, "unlink"))
 			junlink(pathname);
+		if (!strcmp(cmd, "open")) // open file1 0
+			jopen(pathname, atoi(pathname2));
+		if (!strcmp(cmd, "close")) // close fd
+			jclose(atoi(pathname));
+		if (!strcmp(cmd, "read")) {// read fd n
+			jread(atoi(pathname), buf, atoi(pathname2));
+			buf[atoi(pathname2)] = '\0';
+			printf("Read content:\n%s\n", buf);
+		}
+		if (!strcmp(cmd, "write")) // write fd helloworld n
+			jwrite(atoi(pathname), pathname2, atoi(arg1));
 		if (!strcmp(cmd, "quit"))
 			jquit();
 		minodes_print();
